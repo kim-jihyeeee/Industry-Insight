@@ -8,9 +8,9 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 
 # 1. 페이지 설정
-st.set_page_config(page_title="AE Industry Insight v2.8", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AE Industry Insight v2.9", layout="wide")
 
-# 🌟 Gemini API 설정 (가장 안정적인 모델 경로 고정)
+# 🌟 Gemini API 설정
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -34,7 +34,7 @@ def load_font():
 
 FONT_PATH = load_font()
 
-# 네이버 데이터랩 기준 카테고리 구성
+# 카테고리 구성 (네이버 데이터랩 기준)
 NAVER_CATEGORIES = {
     "패션의류": ["여성의류", "남성의류", "캐주얼", "언더웨어/잠옷"],
     "패션잡화": ["신발", "가방", "지갑/벨트", "시계/쥬얼리", "패션소품"],
@@ -59,26 +59,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.title("🚀 Industry Insight v2.8")
+    st.title("🚀 Industry Insight v2.9")
     main_menu = st.radio("메뉴 선택", ["업종별 트렌드 분석", "가망 광고주 제안 솔루션", "광고주 DB 관리", "소통 키워드 분석"])
 
-# 데이터 정제 함수 (불용어 제거)
-def clean_text_for_wc(text_list, target_category):
-    full_text = " ".join(text_list)
-    stopwords = [target_category, '이슈', '트렌드', '전망', '시장', '분석', '출시', '인기', '함께', '있다', '합니다', '위해', '대한', '지속', '가장', '올해', '2024', '2025', '2026', '뉴스', '네이버', '구글', '때문', '통해', '제공', '확대', '기반', '대비']
-    words = re.findall(r'\b\w{2,}\b', full_text)
-    cleaned_words = [w for w in words if w not in stopwords]
-    return " ".join(cleaned_words)
+# 🌟 [개선] AI 기반 전략 키워드 추출 함수
+def extract_ai_keywords(text_list, context_info):
+    if not ai_engine: return " ".join(text_list)
+    try:
+        prompt = f"다음은 {context_info} 관련 텍스트 데이터다. AE가 마케팅 전략 수립에 활용할 수 있는 핵심 키워드 15개만 추출해서 콤마로 구분해줘: {text_list}"
+        response = ai_engine.generate_content(prompt)
+        return response.text.replace(',', ' ')
+    except:
+        return " ".join(text_list)
 
-# 워드클라우드 생성 함수
 def create_styled_wc(text, font_path):
     wc = WordCloud(
-        font_path=font_path,
-        width=1200, height=700,
-        background_color='white',
-        colormap='Dark2',
-        max_words=80,
-        relative_scaling=0.5
+        font_path=font_path, width=1200, height=700,
+        background_color='white', colormap='tab10',
+        max_words=60, relative_scaling=0.5
     ).generate(text)
     fig, ax = plt.subplots(figsize=(15, 8))
     ax.imshow(wc, interpolation='bilinear')
@@ -92,45 +90,38 @@ if main_menu == "업종별 트렌드 분석":
     with c1: m_cat = st.selectbox("대분류 선택", list(NAVER_CATEGORIES.keys()))
     with c2: s_cat = st.selectbox("중분류 선택", NAVER_CATEGORIES[m_cat])
     
-    # 🌟 기간 설정 슬라이더
     period_label = st.select_slider("분석 기간 설정", options=["3일", "7일", "한달", "60일", "분기"], value="60일")
     
-    if st.button(f"🚀 {s_cat} ({period_label}) 분석 시작"):
-        with st.spinner(f"{s_cat} 최신 이슈 수집 중..."):
-            # 🌟 검색 충돌을 피하기 위해 최적화된 검색어 사용
+    if st.button(f"🚀 {s_cat} 전략 리포트 생성"):
+        with st.spinner("AI가 최신 트렌드에서 인사이트를 추출 중입니다..."):
             rss = f"https://news.google.com/rss/search?q={s_cat}+업계+뉴스&hl=ko&gl=KR&ceid=KR:ko"
-            try:
-                res = requests.get(rss, timeout=10)
-                soup = BeautifulSoup(res.text, 'xml')
-                titles = [re.split(r' - | \| ', i.title.get_text())[0] for i in soup.find_all('item')[:30]]
+            res = requests.get(rss); soup = BeautifulSoup(res.text, 'xml')
+            titles = [re.split(r' - | \| ', i.title.get_text())[0] for i in soup.find_all('item')[:25]]
+            
+            if titles:
+                # 🌟 AI가 뉴스 제목에서 전략적 키워드만 선별
+                ai_keywords = extract_ai_keywords(titles, s_cat)
                 
-                if titles:
-                    cleaned_text = clean_text_for_wc(titles, s_cat)
-                    
-                    if ai_engine:
-                        try:
-                            resp = ai_engine.generate_content(f"당신은 전문 AE입니다. {s_cat} 업종의 최근 뉴스 {titles}를 기반으로 {period_label} 동안의 핵심 전략을 제안해줘.")
-                            st.markdown(f'<div class="ai-report-card"><b>🤖 AI 전략 제안</b><br><br>{resp.text}</div>', unsafe_allow_html=True)
-                        except: pass
-                    
-                    fig = create_styled_wc(cleaned_text, FONT_PATH)
-                    st.pyplot(fig)
-                    buf = BytesIO(); fig.savefig(buf, format="png")
-                    st.download_button("📥 이미지 저장", buf.getvalue(), f"{s_cat}_분석.png", "image/png")
-                else:
-                    st.warning("데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
-            except:
-                st.error("데이터 통신 에러가 발생했습니다.")
+                if ai_engine:
+                    try:
+                        resp = ai_engine.generate_content(f"AE 관점에서 {s_cat} 업계 트렌드를 분석하고 캠페인 전략을 제안해줘: {titles}")
+                        st.markdown(f'<div class="ai-report-card"><b>🤖 AI 전략 제안</b><br><br>{resp.text}</div>', unsafe_allow_html=True)
+                    except: pass
+                
+                fig = create_styled_wc(ai_keywords, FONT_PATH)
+                st.pyplot(fig)
+                buf = BytesIO(); fig.savefig(buf, format="png")
+                st.download_button("📥 리포트 이미지 저장", buf.getvalue(), f"{s_cat}_분석.png", "image/png")
 
 # --- [기능 2: 가망 광고주 제안 솔루션] ---
 elif main_menu == "가망 광고주 제안 솔루션":
-    st.header("🎯 가망 광고주 맞춤 전략")
-    t_url = st.text_input("가망 광고주 URL", placeholder="https://...")
+    st.header("🎯 가망 광고주 맞춤 제안")
+    t_url = st.text_input("분석할 가망 광고주 URL", placeholder="https://...")
     cc1, cc2 = st.columns(2)
-    with cc1: pm_cat = st.selectbox("대분류", list(NAVER_CATEGORIES.keys()), key="p_m")
-    with cc2: ps_cat = st.selectbox("중분류", NAVER_CATEGORIES[pm_cat], key="p_s")
+    with cc1: pm_cat = st.selectbox("대분류", list(NAVER_CATEGORIES.keys()), key="pro_m")
+    with cc2: ps_cat = st.selectbox("중분류", NAVER_CATEGORIES[pm_cat], key="pro_s")
     
-    if st.button("💡 제안서 초안 생성"):
+    if st.button("💡 전략 제안서 생성"):
         if not t_url: st.warning("URL을 입력하세요.")
         else:
             with st.spinner("AI 분석 중..."):
@@ -139,30 +130,54 @@ elif main_menu == "가망 광고주 제안 솔루션":
                     try:
                         resp = ai_engine.generate_content(f"광고주 {brand}, 업종 {ps_cat} 제안서 작성해줘.")
                         st.markdown(f'<div class="ai-report-card"><b>💡 {brand} 제안 솔루션</b><br><br>{resp.text}</div>', unsafe_allow_html=True)
-                    except: st.error("AI 서버 응답 지연")
+                    except: st.error("AI 서버 연결 실패")
 
 # --- [기능 3: DB 관리] ---
 elif main_menu == "광고주 DB 관리":
     st.header("📂 데이터 통합 관리")
-    up_f = st.file_uploader("💾 백업 데이터 업로드", type=['xlsx'])
+    up_f = st.file_uploader("💾 백업 데이터 업로드 (XLSX)", type=['xlsx'])
     if up_f:
         df = pd.read_excel(up_f, engine='openpyxl')
         rename_map = {'업체명': '광고주명', '광고주': '광고주명', '내용': '소통내용'}
         df.columns = [rename_map.get(c, c) for c in df.columns]
         st.session_state.history_db = df
+        st.success("데이터 로드 완료!")
     st.divider()
     search = st.text_input("🔍 광고주 검색")
     d_df = st.session_state.history_db.copy()
     if search: d_df = d_df[d_df['광고주명'].str.contains(search, na=False, case=False)]
     st.dataframe(d_df, use_container_width=True)
 
-# --- [기능 4: 소통 키워드 분석] ---
+# --- [기능 4: 소통 키워드 분석 (개선)] ---
 elif main_menu == "소통 키워드 분석":
-    st.header("📊 광고주별 소통 이슈 분석")
-    if not st.session_state.history_db.empty:
-        target = st.selectbox("광고주 선택", sorted(st.session_state.history_db['광고주명'].dropna().unique()))
+    st.header("📊 광고주 소통 이슈 분석")
+    if st.session_state.history_db.empty:
+        st.info("광고주 DB 관리 메뉴에서 데이터를 먼저 업로드해주세요.")
+    else:
+        c1, c2 = st.columns(2)
+        with c1:
+            target = st.selectbox("광고주 선택", sorted(st.session_state.history_db['광고주명'].dropna().unique()))
+        with c2:
+            # 🌟 기간 설정 기능 추가
+            st.session_state.history_db['날짜'] = pd.to_datetime(st.session_state.history_db['날짜'], errors='coerce')
+            min_date = st.session_state.history_db['날짜'].min().date() if not st.session_state.history_db['날짜'].isnull().all() else datetime.date.today()
+            max_date = datetime.date.today()
+            date_range = st.date_input("분석 기간 설정", [min_date, max_date])
+
         f_df = st.session_state.history_db[st.session_state.history_db['광고주명'] == target]
+        if len(date_range) == 2:
+            f_df = f_df[(f_df['날짜'].dt.date >= date_range[0]) & (f_df['날짜'].dt.date <= date_range[1])]
+
         if not f_df.empty:
-            text = " ".join(f_df['소통내용'].fillna('').astype(str))
-            fig = create_styled_wc(text, FONT_PATH)
-            st.pyplot(fig)
+            with st.spinner("소통 내역에서 핵심 이슈를 추출 중입니다..."):
+                text = " ".join(f_df['소통내용'].fillna('').astype(str))
+                refined_text = extract_ai_keywords([text], f"{target} 소통내역")
+                
+                fig = create_styled_wc(refined_text, FONT_PATH)
+                st.pyplot(fig)
+                
+                # 🌟 이미지 저장 기능 추가
+                buf = BytesIO(); fig.savefig(buf, format="png")
+                st.download_button(f"📥 {target} 분석 이미지 저장", buf.getvalue(), f"{target}_분석.png", "image/png")
+        else:
+            st.warning("선택한 기간에 소통 데이터가 없습니다.")
