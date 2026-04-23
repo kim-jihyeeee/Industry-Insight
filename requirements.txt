@@ -6,4 +6,4 @@ beautifulsoup4
 google-generativeai
 requests
 openpyxl
-lxml
+xlsxwriter
