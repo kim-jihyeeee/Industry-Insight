@@ -9,9 +9,9 @@ import google.generativeai as genai
 from collections import Counter
 
 # 1. 페이지 설정
-st.set_page_config(page_title="AE Total Tool v15.3", layout="wide")
+st.set_page_config(page_title="AE Total Tool v15.4", layout="wide")
 
-# Gemini API 설정
+# 🌟 Gemini API 설정
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -35,19 +35,19 @@ def load_font():
 
 FONT_PATH = load_font()
 
-# 🌟 네이버 데이터랩 쇼핑 인사이트 기준 중분류 카테고리
+# 🌟 네이버 데이터랩 쇼핑 인사이트 기준 전체 카테고리 세팅
 DETAILED_CATEGORIES = {
     "패션의류": ["여성의류", "남성의류", "스포츠의류", "아동의류", "언더웨어/잠옷"],
     "패션잡화": ["신발", "가방", "쥬얼리", "시계", "지갑/벨트", "모자", "패션소품"],
     "화장품/미용": ["스킨케어", "메이크업", "헤어케어", "바디케어", "향수", "네일케어", "뷰티소품"],
-    "디지털/가전": ["주방가전", "생활가전", "계절가전", "영상가전", "이미용가전", "PC/노트북", "음향기기", "휴대폰액세서리"],
+    "디지털/가전": ["주방가전", "생활가전", "계절가전", "영상가전", "이미용가전", "PC/노트북", "음향기기"],
     "식품": ["건강식품", "다이어트식품", "음료", "커피/차", "가공식품", "신선식품", "과자/베이커리"],
-    "스포츠/레저": ["골프", "캠핑", "피트니스/요가", "등산", "낚시", "자전거", "수영", "스케이트/보드"],
-    "생활/건강": ["세탁/세정용품", "주방용품", "욕실용품", "반려동물", "의료기기", "생활용품", "수구/공구", "문구/사무용품"],
-    "출산/육아": ["분유/기저귀", "임부복/용품", "수유용품", "유모차/카시트", "아기물티슈", "외출용품", "목욕용품"]
+    "스포츠/레저": ["골프", "캠핑", "피트니스/요가", "등산", "낚시", "자전거", "수영"],
+    "생활/건강": ["세탁/세정용품", "주방용품", "욕실용품", "반려동물", "의료기기", "생활용품", "문구/사무용품"],
+    "출산/육아": ["분유/기저귀", "임부복/용품", "수유용품", "유모차/카시트", "아기물티슈", "목욕용품"]
 }
 
-# 세션 및 DB 표준화
+# 세션 초기화 및 DB 열 이름 표준화 (KeyError 방지)
 if 'history_db' not in st.session_state: 
     st.session_state.history_db = pd.DataFrame(columns=['날짜', '광고주명', '소통내용', '대분류', '소분류'])
 
@@ -63,7 +63,7 @@ def normalize_column_names(df):
             if col in variations: new_cols[col] = standard
     return df.rename(columns=new_cols)
 
-# UI 스타일
+# 스타일 적용
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; background-color: #FFB300; color: white; font-weight: bold; height: 3em; }
@@ -72,7 +72,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 유틸리티 함수
+# 🌟 [오류 수정 완료] 워드클라우드 생성 함수
 def create_cleaned_wc(text_data, height=600):
     if isinstance(text_data, pd.Series): text_list = text_data.dropna().astype(str).tolist()
     else: text_list = text_data
@@ -88,6 +88,7 @@ def create_cleaned_wc(text_data, height=600):
 
 def get_failsafe_keywords(titles):
     try:
-        resp = ai_engine.generate_content(f"{titles}에서 제안용 핵심 단어 5개만 #단어로 뽑아줘. 이슈/트렌드 단어 제외.")
+        resp = ai_engine.generate_content(f"{titles}에서 제안용 핵심 명사 5개만 #단어로 뽑아줘. 이슈/트렌드 단어 제외.")
         tags = re.findall(r'#\w+', resp.text)
-        if len(
+        if len(tags) >= 5: return tags[:5]
+    except: pass
