@@ -6,10 +6,9 @@ from io import BytesIO
 import datetime, requests, re
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-from collections import Counter
 
 # 1. 설정 및 AI 초기화
-st.set_page_config(page_title="AE Total Tool v16.1", layout="wide")
+st.set_page_config(page_title="AE Total Tool v17.0", layout="wide")
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -31,44 +30,26 @@ def load_font():
 
 F_PATH = load_font()
 
-# 🌟 네이버 데이터랩 기준 카테고리
-CATS = {
-    "패션의류": ["여성의류", "남성의류", "스포츠의류", "언더웨어/잠옷"],
-    "패션잡화": ["신발", "가방", "쥬얼리", "시계", "선글라스"],
-    "화장품/미용": ["스킨케어", "메이크업", "헤어케어", "바디케어", "향수"],
-    "디지털/가전": ["주방가전", "생활가전", "계절가전", "이미용가전", "PC/노트북"],
-    "식품": ["건강식품", "다이어트식품", "음료", "가공식품", "신선식품"],
-    "스포츠/레저": ["골프", "캠핑", "피트니스", "등산", "낚시", "자전거"],
-    "생활/건강": ["세탁용품", "주방용품", "욕실용품", "반려동물", "의료기기"]
-}
-
-if 'history_db' not in st.session_state: 
-    st.session_state.history_db = pd.DataFrame(columns=['날짜', '광고주명', '소통내용', '대분류', '소분류'])
-
+# 공통 함수
 def create_wc(data, h=500):
     txt = " ".join(data.dropna().astype(str)) if isinstance(data, pd.Series) else " ".join(data)
-    if not txt.strip(): return None, None
+    if not txt.strip(): return None
     sw = ["뉴스", "제목", "기자", "통해", "대한", "관련", "위해", "있는"]
-    wc = WordCloud(font_path=F_PATH, width=1200, height=h, background_color='white', colormap='tab10', stopwords=set(sw), regexp=r"[가-힣]{2,}").generate(txt)
+    wc = WordCloud(font_path=F_PATH, width=1200, height=h, background_color='white', stopwords=set(sw), regexp=r"[가-힣]{2,}").generate(txt)
     fig, ax = plt.subplots(figsize=(15, h/100))
     ax.imshow(wc, interpolation='bilinear'); ax.axis('off')
     buf = BytesIO(); fig.savefig(buf, format='png', bbox_inches='tight')
     return fig, buf
 
-def get_tags(titles):
-    try:
-        resp = ai_engine.generate_content(f"{titles}에서 실무 제안용 핵심 단어 5개만 #단어로 뽑아줘.")
-        tags = re.findall(r'#\w+', resp.text)
-        if len(tags) >= 5: return tags[:5]
-    except: pass
-    return [f"#{w}" for w, c in Counter(re.findall(r'[가-힣]{2,}', " ".join(titles))).most_common(5)]
+# --- 사이드바 및 메뉴 ---
+with st.sidebar:
+    st.title("🚀 AE Total Tool v17.0") # 🌟 앱 이름 복구
+    menu = st.radio("메뉴", ["🌐 AI Trend Radar", "📂 광고주 DB 관리"])
 
-# --- 메뉴 ---
-menu = st.sidebar.radio("메뉴", ["🌐 Radar", "📂 DB 관리", "📝 이력 입력", "📊 리포트"])
-
-if menu == "🌐 Radar":
+# 1. AI Trend Radar
+if menu == "🌐 AI Trend Radar":
     st.title("🌐 AI Trend Radar")
-    t1, t2 = st.tabs(["📰 뉴스 분석", "🔍 검색 분석"])
+    t1, t2 = st.tabs(["📰 뉴스 AI 분석", "🔍 검색 AI 분석"])
     for i, t in enumerate([t1, t2]):
         with t:
             c1, c2 = st.columns([3, 1])
@@ -76,65 +57,27 @@ if menu == "🌐 Radar":
             p = c2.selectbox("기간", ["3일", "7일", "한달", "60일", "분기"], index=3, key=f"p{i}")
             if st.button(f"🚀 {['뉴스', '검색'][i]} 분석 시작", key=f"b{i}"):
                 q = k if i==0 else f"{k}+추천+이슈"
-                res = requests.get(f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko")
-                titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
-                if titles:
-                    st.write(" ".join([f"**{tag}**" for tag in get_tags(titles)]))
-                    f, _ = create_wc(titles); st.pyplot(f)
+                try:
+                    res = requests.get(f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko")
+                    titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
+                    if titles:
+                        # 🌟 괄호 오타 수정 완료
+                        fig, _ = create_wc(titles); st.pyplot(fig)
+                    else: st.warning("데이터가 없습니다.")
+                except: st.error("통신 장애 발생")
 
-elif menu == "📂 DB 관리":
-    st.header("📂 DB 관리")
-    up = st.file_uploader("XLSX 업로드", type=['xlsx'])
+# 2. DB 관리
+elif menu == "📂 광고주 DB 관리":
+    st.header("📂 광고주 DB 관리")
+    up = st.file_uploader("💾 XLSX 업로드", type=['xlsx'])
     if up:
         df = pd.read_excel(up, engine='openpyxl')
+        # 간단 표준화
         df.columns = [{'광고주':'광고주명','업체명':'광고주명','내용':'소통내용'}.get(c, c) for c in df.columns]
         st.session_state.history_db = df
-    if not st.session_state.history_db.empty:
+        st.success("✅ 로드 완료!")
+    if 'history_db' in st.session_state and not st.session_state.history_db.empty:
+        st.dataframe(st.session_state.history_db, use_container_width=True)
         towrite = BytesIO(); st.session_state.history_db.to_excel(towrite, index=False)
-        st.download_button("📥 다운로드", towrite.getvalue(), "AE_DB.xlsx")
-    st.dataframe(st.session_state.history_db, use_container_width=True)
-
-elif menu == "📝 이력 입력":
-    st.header("📝 이력 입력")
-    db = st.session_state.history_db
-    all_c = sorted(db['광고주명'].dropna().unique().tolist()) if '광고주명' in db.columns else []
-    sq = st.text_input("🔍 검색 필터", placeholder="'그린' 등 입력")
-    flist = [c for c in all_c if sq in c] if sq else all_c
-    with st.form("in_f", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        dt, sel = c1.date_input("날짜"), c2.selectbox("광고주 선택", ["직접 입력"] + flist)
-        txt = st.text_input("새 업체명(목록에 없을 때)")
-        m = st.selectbox("대분류", list(CATS.keys()))
-        s = st.selectbox("세부분류", CATS[m])
-        cont = st.text_area("내용")
-        if st.form_submit_button("💾 저장"):
-            fn = txt if sel == "직접 입력" else sel
-            if not fn and sq: fn = flist[0] if flist else sq
-            new = pd.DataFrame({'날짜':[pd.to_datetime(dt)], '광고주명':[fn], '소통내용':[cont], '대분류':[m], '소분류':[s]})
-            st.session_state.history_db = pd.concat([st.session_state.history_db, new], ignore_index=True)
-            st.success(f"✅ {fn} 저장 완료")
-
-elif menu == "📊 리포트":
-    st.header("📊 이슈 리포트")
-    db = st.session_state.history_db
-    if not db.empty and '광고주명' in db.columns:
-        all_c = sorted(db['광고주명'].dropna().unique().tolist())
-        c1, c2, c3 = st.columns(3)
-        ts = c1.text_input("🔍 검색")
-        target = c1.selectbox("대상", [c for c in all_c if ts in c] if ts else all_c)
-        m, s = c2.selectbox("대분류 ", list(CATS.keys())), c3.selectbox("세부분류 ", CATS[c2.selectbox("대분류", list(CATS.keys()), key="rm") if False else m])
-        dr = st.date_input("기간", [datetime.date.today()-datetime.timedelta(days=30), datetime.date.today()])
-        f_df = db[db['광고주명'] == target].copy()
-        f_df['날짜'] = pd.to_datetime(f_df['날짜'], errors='coerce')
-        if len(dr) == 2: f_df = f_df[(f_df['날짜'].dt.date >= dr[0]) & (f_df['날짜'].dt.date <= dr[1])]
-        st.subheader(f"💬 {target} 소통 이슈")
-        if not f_df.empty:
-            fig, buf = create_wc(f_df['소통내용']); st.pyplot(fig)
-            st.download_button("🖼️ 이미지 저장 ", buf.getvalue(), "report.png", key="d1")
-        st.subheader(f"🌏 {s} 시장 트렌드")
-        if st.button("🔗 트렌드 불러오기"):
-            res = requests.get(f"https://news.google.com/rss/search?q={s}+트렌드&hl=ko&gl=KR&ceid=KR:ko")
-            titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
-            fig, buf = create_wc(titles); st.pyplot(fig)
-            st.download_button("🖼️ 이미지 저장", buf.getvalue(), "trend.png", key="d2")
-    else: st.info("📂 DB를 먼저 업로드해 주세요.")
+        st.download_button("📥 백업 다운로드", towrite.getvalue(), "AE_DB.xlsx")
+    else: st.info("📂 XLSX 파일을 먼저 업로드해 주세요.")
