@@ -9,7 +9,7 @@ import google.generativeai as genai
 from collections import Counter
 
 # 1. 설정 및 AI 초기화
-st.set_page_config(page_title="AE Total Tool v18.0", layout="wide")
+st.set_page_config(page_title="AE Total Tool v18.5", layout="wide")
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -31,7 +31,7 @@ def load_font():
 
 F_PATH = load_font()
 
-# 🌟 네이버 데이터랩 쇼핑 인사이트 기준 중분류 카테고리 (지혜님 요청 풀세팅)
+# 🌟 네이버 데이터랩 쇼핑 인사이트 기준 중분류 카테고리 (풀세팅 유지)
 CATS = {
     "패션의류": ["여성의류", "남성의류", "언더웨어/잠옷", "스포츠의류", "아동의류"],
     "패션잡화": ["신발", "가방", "쥬얼리", "시계", "선글라스/안경테", "지갑/벨트"],
@@ -65,13 +65,14 @@ def get_tags(titles):
     words = re.findall(r'[가-힣]{2,}', " ".join(titles))
     return [f"#{w}" for w, c in Counter(words).most_common(5)]
 
-# --- 사이드바 ---
+# --- 사이드바 및 앱 이름 ---
 with st.sidebar:
-    st.title("🚀 AE Total Tool v18.0")
+    st.title("🚀 AE Total Tool v18.5")
     menu = st.radio("메뉴", ["🌐 AI Trend Radar", "📂 광고주 DB 관리", "📝 관리 이력 입력", "📊 내부 소통 이슈 리포트"])
 
-# 1. AI Trend Radar (키워드 5개 추천 복구)
+# 1. AI Trend Radar (키워드 5개 복구 완료)
 if menu == "🌐 AI Trend Radar":
+    st.title("🌐 AI Trend Radar")
     t1, t2 = st.tabs(["📰 뉴스 분석", "🔍 검색 분석"])
     for i, t in enumerate([t1, t2]):
         with t:
@@ -83,11 +84,12 @@ if menu == "🌐 AI Trend Radar":
                 res = requests.get(f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko")
                 titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
                 if titles:
-                    st.write(" ".join([f"**{tag}**" for tag in get_tags(titles)])) # 🌟 5개 키워드 추천
+                    st.write(" ".join([f"**{tag}**" for tag in get_tags(titles)]))
                     fig, _ = create_wc(titles); st.pyplot(fig)
 
 # 2. DB 관리
 elif menu == "📂 광고주 DB 관리":
+    st.header("📂 광고주 DB 관리")
     up = st.file_uploader("💾 XLSX 업로드", type=['xlsx'])
     if up:
         df = pd.read_excel(up, engine='openpyxl')
@@ -98,17 +100,19 @@ elif menu == "📂 광고주 DB 관리":
         tow = BytesIO(); st.session_state.history_db.to_excel(tow, index=False)
         st.download_button("📥 DB 백업 다운로드", tow.getvalue(), "AE_DB.xlsx")
 
-# 3. 이력 입력 (스마트 검색 필터)
+# 3. 이력 입력 (스마트 필터링 유지)
 elif menu == "📝 관리 이력 입력":
+    st.header("📝 관리 이력 직접 입력")
     db = st.session_state.history_db
     all_c = sorted(db['광고주명'].dropna().unique().tolist()) if '광고주명' in db.columns else []
-    sq = st.text_input("🔍 광고주 검색 필터", placeholder="'그린' 등 업체명 일부 입력")
+    sq = st.text_input("🔍 광고주 검색 필터", placeholder="'그린' 등 입력")
     flist = [c for c in all_c if sq in c] if sq else all_c
     with st.form("in_f", clear_on_submit=True):
         c1, c2 = st.columns(2)
-        dt, sel = c1.date_input("날짜", datetime.date.today()), c2.selectbox("광고주 선택", ["직접 입력"] + flist)
+        dt = c1.date_input("날짜", datetime.date.today())
+        sel = c2.selectbox("광고주 선택", ["직접 입력"] + flist)
         txt = st.text_input("새 광고주명 (목록에 없을 때)")
-        m = st.selectbox("대분류 (네이버)", list(CATS.keys()))
+        m = st.selectbox("대분류 (네이버 기준)", list(CATS.keys()))
         s = st.selectbox("세부분류", CATS[m])
         cont = st.text_area("소통 내용")
         if st.form_submit_button("💾 데이터 저장"):
@@ -118,29 +122,36 @@ elif menu == "📝 관리 이력 입력":
             st.session_state.history_db = pd.concat([st.session_state.history_db, new], ignore_index=True)
             st.success(f"✅ {fn} 저장 성공!")
 
-# 4. 리포트 (상하 배치 및 기간 필터)
+# 4. 리포트 (에러 해결 및 상하 배치)
 elif menu == "📊 내부 소통 이슈 리포트":
+    st.header("📊 내부 소통 이슈 리포트")
     db = st.session_state.history_db
     if not db.empty and '광고주명' in db.columns:
         c1, c2, c3 = st.columns(3)
-        ts = c1.text_input("🔍 분석 광고주 검색")
-        tlist = [c for c in sorted(db['광고주명'].unique()) if ts in c] if ts else sorted(db['광고주명'].unique())
-        target = c1.selectbox("최종 선택", tlist)
-        m, s = c2.selectbox("업종 대분류", list(CATS.keys())), c3.selectbox("업종 세부분류", CATS[m])
-        dr = st.date_input("기간 설정", [datetime.date.today()-datetime.timedelta(days=30), datetime.date.today()])
+        ts = c1.text_input("🔍 분석 광고주 검색", key="search_rep")
+        all_c_sorted = sorted(db['광고주명'].dropna().unique())
+        tlist = [c for c in all_c_sorted if ts in c] if ts else all_c_sorted
+        target = c1.selectbox("최종 분석 대상 선택", tlist)
+        
+        m = c2.selectbox("업종 대분류 선택", list(CATS.keys()))
+        s = c3.selectbox("업종 세부분류 선택", CATS[m])
+        dr = st.date_input("분석 기간 설정", [datetime.date.today()-datetime.timedelta(days=30), datetime.date.today()])
         
         st.markdown(f"### 💬 {target} 소통 이슈")
         f_df = db[db['광고주명'] == target].copy()
         f_df['날짜'] = pd.to_datetime(f_df['날짜'], errors='coerce')
-        if len(dr) == 2: f_df = f_df[(f_df['날짜'].dt.date >= dr[0]) & (f_df['날짜'].dt.date <= dr[1])]
+        if len(dr) == 2:
+            f_df = f_df[(f_df['날짜'].dt.date >= dr[0]) & (f_df['날짜'].dt.date <= dr[1])]
+        
         if not f_df.empty:
             fig, buf = create_wc(f_df['소통내용']); st.pyplot(fig)
-            st.download_button("🖼️ 이미지 저장", buf.getvalue(), f"{target}_report.png")
+            st.download_button("🖼️ 이미지 저장", buf.getvalue(), f"{target}_WC.png", key="d1")
             
         st.markdown(f"### 🌏 {s} 시장 트렌드 매칭")
         if st.button("🔗 실시간 트렌드 불러오기"):
             rss = f"https://news.google.com/rss/search?q={s}+트렌드&hl=ko&gl=KR&ceid=KR:ko"
-            titles = [i.title.get_text() for i in BeautifulSoup(requests.get(rss).text, 'xml').find_all('item')[:30]]
+            res = requests.get(rss)
+            titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
             fig, buf = create_wc(titles); st.pyplot(fig)
-            st.download_button("🖼️ 시장 이미지 저장", buf.getvalue(), f"{s}_trend.png")
+            st.download_button("🖼️ 시장 이미지 저장", buf.getvalue(), f"{s}_Trend.png", key="d2")
     else: st.info("📂 DB를 먼저 업로드해 주세요.")
