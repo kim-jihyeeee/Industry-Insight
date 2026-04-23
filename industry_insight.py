@@ -9,7 +9,7 @@ import google.generativeai as genai
 from collections import Counter
 
 # 1. 설정 및 AI 초기화
-st.set_page_config(page_title="AE Total Tool v20.0", layout="wide")
+st.set_page_config(page_title="AE Total Tool v21.0", layout="wide")
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -31,7 +31,7 @@ def load_font():
 
 F_PATH = load_font()
 
-# 🌟 네이버 데이터랩 쇼핑 인사이트 기준 중분류 카테고리 풀세팅
+# 🌟 카테고리 설정 (기존 유지)
 CATS = {
     "패션의류": ["여성의류", "남성의류", "언더웨어/잠옷", "스포츠의류", "아동의류"],
     "패션잡화": ["신발", "가방", "쥬얼리", "시계", "선글라스/안경테", "지갑/벨트", "모자"],
@@ -46,7 +46,6 @@ CATS = {
 if 'history_db' not in st.session_state: 
     st.session_state.history_db = pd.DataFrame(columns=['날짜', '광고주명', '소통내용', '대분류', '소분류'])
 
-# 🌟 [KeyError 해결 핵심] 컬럼명 자동 표준화 함수
 def fix_columns(df):
     mapping = {
         '날짜': ['날짜', '일자', 'Date', '등록일', 'date', '등록일시'],
@@ -60,12 +59,28 @@ def fix_columns(df):
                 new_cols[col] = standard
     return df.rename(columns=new_cols)
 
-# 공통 유틸리티
+# 🌟 [v21.0 업데이트] 필터링 강화된 워드클라우드 함수
 def create_wc(data, h=500):
     txt = " ".join(data.dropna().astype(str)) if isinstance(data, pd.Series) else " ".join(data)
     if not txt.strip(): return None, None
-    sw = ["뉴스", "제목", "기자", "통해", "대한", "관련", "위해", "있는", "지난", "이번", "제공"]
-    wc = WordCloud(font_path=F_PATH, width=1200, height=h, background_color='white', colormap='tab10', stopwords=set(sw), regexp=r"[가-힣]{2,}").generate(txt)
+    
+    # AE 업무 시 불필요한 단어 대거 필터링 (Stopwords)
+    stop_words = [
+        "뉴스", "제목", "기자", "통해", "대한", "관련", "위해", "있는", "지난", "이번", "제공", 
+        "사진", "오전", "오후", "오늘", "내일", "출시", "진행", "발표", "때문", "최근", "그동안",
+        "만큼", "대해", "통한", "따라", "포함", "상황", "정보", "확인", "사용", "가장"
+    ]
+    
+    wc = WordCloud(
+        font_path=F_PATH, 
+        width=1200, height=h, 
+        background_color='white', 
+        colormap='tab10', 
+        stopwords=set(stop_words), 
+        regexp=r"[가-힣]{2,}", # 🌟 한 글자 조사 등 제외
+        max_words=60 # 🌟 너무 자잘한 단어 제외하고 굵직한 키워드 위주
+    ).generate(txt)
+    
     fig, ax = plt.subplots(figsize=(15, h/100)); ax.imshow(wc, interpolation='bilinear'); ax.axis('off')
     buf = BytesIO(); fig.savefig(buf, format='png', bbox_inches='tight')
     return fig, buf
@@ -81,7 +96,7 @@ def get_tags(titles):
 
 # --- 사이드바 ---
 with st.sidebar:
-    st.title("🚀 AE Total Tool v20.0")
+    st.title("🚀 AE Total Tool v21.0")
     menu = st.radio("메뉴 선택", ["🌐 AI Trend Radar", "📂 광고주 DB 관리", "📝 관리 이력 직접 입력", "📊 내부 소통 이슈 리포트"])
 
 # 1. AI Trend Radar
@@ -108,13 +123,13 @@ elif menu == "📂 광고주 DB 관리":
     if up:
         df = fix_columns(pd.read_excel(up, engine='openpyxl'))
         st.session_state.history_db = df
-        st.success("✅ DB 로드 및 컬럼 표준화 완료!")
+        st.success("✅ DB 로드 완료!")
     if not st.session_state.history_db.empty:
         st.dataframe(st.session_state.history_db, use_container_width=True)
         tow = BytesIO(); st.session_state.history_db.to_excel(tow, index=False)
         st.download_button("📥 전체 DB 다운로드", tow.getvalue(), "AE_DB_Backup.xlsx")
 
-# 3. 관리 이력 입력
+# 3. 관리 이력 입력 (필터링 기능 유지)
 elif menu == "📝 관리 이력 직접 입력":
     st.header("📝 관리 이력 직접 입력")
     db = st.session_state.history_db
@@ -136,11 +151,10 @@ elif menu == "📝 관리 이력 직접 입력":
             st.session_state.history_db = pd.concat([st.session_state.history_db, new], ignore_index=True)
             st.success(f"✅ {fn} 저장 완료!")
 
-# 4. 리포트
+# 4. 리포트 (날짜 에러 방어 및 상하 배치 유지)
 elif menu == "📊 내부 소통 이슈 리포트":
     st.header("📊 내부 소통 이슈 리포트")
     db = st.session_state.history_db
-    # 🌟 리포트 진입 시에도 컬럼명 다시 한번 고침 (에러 방어)
     if not db.empty: db = fix_columns(db)
     
     if not db.empty and '광고주명' in db.columns and '날짜' in db.columns:
@@ -150,29 +164,16 @@ elif menu == "📊 내부 소통 이슈 리포트":
         tlist = [c for c in all_clients if ts in c] if ts else all_clients
         target = c1.selectbox("최종 선택", tlist if tlist else ["데이터 없음"])
         
-        m_cat = c2.selectbox("비교 업종 대분류", list(CATS.keys()))
-        s_cat = c3.selectbox("비교 업종 세부분류", CATS[m_cat])
+        m_cat = c2.selectbox("업종 대분류 선택", list(CATS.keys()))
+        s_cat = c3.selectbox("업종 세부분류 선택", CATS[m_cat])
         dr = st.date_input("분석 기간", [datetime.date.today()-datetime.timedelta(days=30), datetime.date.today()])
         
         st.markdown(f"### 💬 {target} 소통 이슈 (내부 분석)")
         f_df = db[db['광고주명'] == target].copy()
-        
-        # 🌟 날짜 에러 방지 처리
         f_df['날짜'] = pd.to_datetime(f_df['날짜'], errors='coerce')
         if len(dr) == 2:
             f_df = f_df[(f_df['날짜'].dt.date >= dr[0]) & (f_df['날짜'].dt.date <= dr[1])]
         
         if not f_df.empty:
             fig, buf = create_wc(f_df['소통내용']); st.pyplot(fig)
-            st.download_button("🖼️ 이미지 저장 ", buf.getvalue(), f"{target}_issue.png", key="d1")
-        else: st.warning("해당 기간의 데이터가 없습니다.")
-            
-        st.markdown(f"### 🌏 {s_cat} 시장 트렌드 (외부 분석)")
-        if st.button("🔗 실시간 트렌드 분석 불러오기"):
-            rss = f"https://news.google.com/rss/search?q={s_cat}+트렌드&hl=ko&gl=KR&ceid=KR:ko"
-            res = requests.get(rss)
-            titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
-            fig, buf = create_wc(titles); st.pyplot(fig)
-            st.download_button("🖼️ 시장 이미지 저장", buf.getvalue(), f"{s_cat}_trend.png", key="d2")
-    else:
-        st.info("📂 광고주 DB를 먼저 업로드해 주세요. (날짜, 광고주명, 소통내용 컬럼이 필요합니다)")
+            st.download_button("🖼️ 이미지 저장 ", buf.getvalue(), f"{target}_
