@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 from collections import Counter
 
-st.set_page_config(page_title="AE Total Tool v22.9", layout="wide")
+st.set_page_config(page_title="AE Total Tool v23.0", layout="wide")
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -68,7 +68,7 @@ def get_tags(titles):
     words = re.findall(r'[가-힣]{2,}', " ".join(titles))
     return [f"#{w}" for w, c in Counter(words).most_common(5)]
 
-st.sidebar.title("🚀 AE Total Tool v22.9")
+st.sidebar.title("🚀 AE Total Tool v23.0")
 menu = st.sidebar.radio("메뉴", ["🌐 AI Trend Radar", "📂 광고주 DB 관리", "📝 관리 이력 직접 입력", "📊 내부 소통 이슈 리포트"])
 
 if menu == "🌐 AI Trend Radar":
@@ -121,7 +121,9 @@ elif menu == "📊 내부 소통 이슈 리포트":
         ts = c1.text_input("🔍 광고주 검색")
         tlist = [c for c in sorted(db['광고주명'].unique()) if ts in c] if ts else sorted(db['광고주명'].unique())
         target = c1.selectbox("대상 선택", tlist if tlist else ["없음"])
-        m_v, s_v = c2.selectbox("대분류 선택", list(CATS.keys())), c3.selectbox("세부분류 선택", CATS[c2.selectbox("대분류", list(CATS.keys()), key="rm") if False else m_v])
+        # 🌟 NameError 해결: 선언 순서 조정
+        m_v = c2.selectbox("대분류 선택", list(CATS.keys()), key="rep_m_v")
+        s_v = c3.selectbox("세부분류 선택", CATS[m_v], key="rep_s_v")
         dr = st.date_input("기간", [datetime.date.today()-datetime.timedelta(days=30), datetime.date.today()])
         st.markdown(f"### 💬 {target} 소통 이슈")
         f_df = db[db['광고주명'] == target].copy()
