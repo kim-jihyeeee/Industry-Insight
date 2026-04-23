@@ -9,7 +9,7 @@ import google.generativeai as genai
 from collections import Counter
 
 # 1. 설정 및 AI 초기화
-st.set_page_config(page_title="AE Total Tool v22.1", layout="wide")
+st.set_page_config(page_title="AE Total Tool v22.2", layout="wide")
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -51,7 +51,7 @@ def fix_col(df):
     new = {}
     for k, v in m.items():
         for c in df.columns:
-            if c.strip() in v: new[c] = k
+            if str(c).strip() in v: new[c] = k
     return df.rename(columns=new)
 
 # 🌟 워드클라우드 (노이즈 정제 강화)
@@ -112,18 +112,4 @@ elif menu == "📝 이력 입력":
     with st.form("in_f", clear_on_submit=True):
         c1, c2 = st.columns(2)
         dt, sel = c1.date_input("날짜", datetime.date.today()), c2.selectbox("광고주 선택", ["직접 입력"] + flist)
-        txt, m = st.text_input("새 광고주명"), st.selectbox("대분류", list(CATS.keys()))
-        s = st.selectbox("세부분류", CATS[m])
-        cont = st.text_area("소통 내용")
-        if st.form_submit_button("💾 저장"):
-            fn = txt if sel == "직접 입력" else sel
-            if not fn and sq: fn = flist[0] if flist else sq
-            new = pd.DataFrame({'날짜':[pd.to_datetime(dt)], '광고주명':[fn], '소통내용':[cont], '대분류':[m], '소분류':[s]})
-            st.session_state.history_db = pd.concat([st.session_state.history_db, new], ignore_index=True)
-            st.success(f"✅ {fn} 저장 성공")
-
-elif menu == "📊 리포트":
-    st.header("📊 이슈 리포트")
-    db = fix_col(st.session_state.history_db) if not st.session_state.history_db.empty else st.session_state.history_db
-    if not db.empty and '광고주명' in db.columns:
-        c1, c2, c3 = st.columns(
+        txt, m = st.text_input("새 광고주명"), st.selectbox("대분
