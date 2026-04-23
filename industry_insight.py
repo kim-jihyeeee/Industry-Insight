@@ -93,3 +93,61 @@ if menu == "🌐 AI Trend Radar":
                 res = requests.get(f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko")
                 titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
                 if titles:
+                    st.write(" ".join([f"**{tag}**" for tag in get_tags(titles)]))
+                    fig, _ = create_wc(titles); st.pyplot(fig)
+
+elif menu == "📂 광고주 DB 관리":
+    st.header("📂 광고주 DB 관리")
+    up = st.file_uploader("💾 XLSX 업로드", type=['xlsx'])
+    if up:
+        st.session_state.history_db = fix_columns(pd.read_excel(up, engine='openpyxl'))
+        st.success("✅ DB 로드 완료!")
+    if not st.session_state.history_db.empty:
+        st.dataframe(st.session_state.history_db, use_container_width=True)
+        tow = BytesIO(); st.session_state.history_db.to_excel(tow, index=False)
+        st.download_button("📥 DB 백업 다운로드", tow.getvalue(), "AE_DB.xlsx")
+
+elif menu == "📝 관리 이력 직접 입력":
+    st.header("📝 관리 이력 직접 입력")
+    db = st.session_state.history_db
+    all_c = sorted(db['광고주명'].dropna().unique().tolist()) if '광고주명' in db.columns else []
+    sq = st.text_input("🔍 광고주 검색 필터", placeholder="'그린' 등 입력")
+    flist = [c for c in all_c if sq in c] if sq else all_c
+    with st.form("in_f", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        dt, sel = c1.date_input("날짜", datetime.date.today()), c2.selectbox("광고주 선택", ["직접 입력"] + flist)
+        txt = st.text_input("새 광고주명 (목록에 없을 때)")
+        m = st.selectbox("대분류", list(CATS.keys()))
+        s = st.selectbox("세부분류", CATS[m])
+        cont = st.text_area("소통 내용")
+        if st.form_submit_button("💾 저장"):
+            fn = txt if sel == "직접 입력" else sel
+            if not fn and sq: fn = flist[0] if flist else sq
+            new = pd.DataFrame({'날짜':[pd.to_datetime(dt)], '광고주명':[fn], '소통내용':[cont], '대분류':[m], '소분류':[s]})
+            st.session_state.history_db = pd.concat([st.session_state.history_db, new], ignore_index=True)
+            st.success(f"✅ {fn} 저장 성공!")
+
+elif menu == "📊 내부 소통 이슈 리포트":
+    st.header("📊 내부 소통 이슈 리포트")
+    db = fix_columns(st.session_state.history_db) if not st.session_state.history_db.empty else st.session_state.history_db
+    if not db.empty and '광고주명' in db.columns:
+        c1, c2, c3 = st.columns(3)
+        ts = c1.text_input("🔍 분석 광고주 검색")
+        tlist = [c for c in sorted(db['광고주명'].unique()) if ts in c] if ts else sorted(db['광고주명'].unique())
+        target = c1.selectbox("대상 선택", tlist)
+        m, s = c2.selectbox("업종 대분류", list(CATS.keys())), c3.selectbox("업종 세부분류", CATS[m])
+        dr = st.date_input("분석 기간", [datetime.date.today()-datetime.timedelta(days=30), datetime.date.today()])
+        st.markdown(f"### 💬 {target} 소통 이슈")
+        f_df = db[db['광고주명'] == target].copy()
+        f_df['날짜'] = pd.to_datetime(f_df['날짜'], errors='coerce')
+        if len(dr) == 2: f_df = f_df[(f_df['날짜'].dt.date >= dr[0]) & (f_df['날짜'].dt.date <= dr[1])]
+        if not f_df.empty:
+            fig, buf = create_wc(f_df['소통내용']); st.pyplot(fig)
+            st.download_button("🖼️ 이미지 저장", buf.getvalue(), f"{target}_issue.png", key="d1")
+        st.markdown(f"### 🌏 {s} 시장 트렌드")
+        if st.button("🔗 트렌드 불러오기"):
+            res = requests.get(f"https://news.google.com/rss/search?q={s}+트렌드&hl=ko&gl=KR&ceid=KR:ko")
+            titles = [i.title.get_text() for i in BeautifulSoup(res.text, 'xml').find_all('item')[:30]]
+            fig, buf = create_wc(titles); st.pyplot(fig)
+            st.download_button("🖼️ 시장 이미지 저장", buf.getvalue(), f"{s}_trend.png", key="d2")
+    else: st.info("📂 DB를 먼저 업로드해 주세요.")
