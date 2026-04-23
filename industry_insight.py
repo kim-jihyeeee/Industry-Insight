@@ -9,9 +9,9 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 
 # 1. 페이지 설정
-st.set_page_config(page_title="AE Industry Insight v2.2", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AE Industry Insight v2.3", layout="wide", initial_sidebar_state="auto")
 
-# 🌟 Gemini API 설정 (NotFound 에러 해결을 위한 최신 경로 적용)
+# 🌟 Gemini API 설정 (안정성 및 성공률 강화)
 API_KEY = "AQ.Ab8RN6Lc9LYyyyi-oE7eVOZfjfe8AKJIQ8u3SnPmUce-LjoZRw"
 
 @st.cache_resource
@@ -19,7 +19,7 @@ def init_ai():
     if not API_KEY: return None
     try:
         genai.configure(api_key=API_KEY)
-        # 🌟 'models/' 명칭을 포함한 최신 경로로 고정하여 에러를 차단합니다.
+        # 🌟 NotFound 에러를 방지하기 위해 최신 명칭 모델을 명시적으로 사용
         return genai.GenerativeModel('models/gemini-1.5-flash-latest')
     except:
         return None
@@ -37,7 +37,7 @@ def load_font():
 
 FONT_PATH = load_font()
 
-# 네이버 데이터랩 기준 카테고리 구성
+# 카테고리 구성 (네이버 데이터랩 기준)
 NAVER_CATEGORIES = {
     "패션의류": ["여성의류", "남성의류", "캐주얼", "언더웨어/잠옷"],
     "패션잡화": ["신발", "가방", "지갑/벨트", "시계/쥬얼리", "패션소품"],
@@ -63,67 +63,85 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.title("🚀 Industry Insight v2.2")
+    st.title("🚀 Industry Insight v2.3")
     st.markdown('<p class="menu-header">📋 메인 메뉴</p>', unsafe_allow_html=True)
     main_menu = st.radio("항목 선택", ["업종별 트렌드 분석", "가망 광고주 제안 솔루션", "광고주 DB 관리", "소통 키워드 분석"], label_visibility="collapsed")
 
-# 마인드맵 시각화 함수 (원형 집중 구조)
+# 🌟 고도화된 마인드맵 시각화 함수 (중앙 집중 원형 구조)
 def create_mindmap(text, font_path):
     x, y = np.ogrid[:1000, :1000]
     mask = (x - 500) ** 2 + (y - 500) ** 2 > 430 ** 2
     mask = 255 * mask.astype(int)
-    wc = WordCloud(font_path=font_path, width=1000, height=1000, background_color='white', mask=mask, colormap='tab10', prefer_horizontal=0.5, relative_scaling=0.6).generate(text)
+    
+    wc = WordCloud(
+        font_path=font_path, width=1000, height=1000,
+        background_color='white', mask=mask,
+        colormap='tab10', prefer_horizontal=0.6,
+        relative_scaling=0.5, min_font_size=12
+    ).generate(text)
+    
     fig, ax = plt.subplots(figsize=(10, 10))
-    ax.imshow(wc, interpolation='bilinear'); ax.axis('off')
+    ax.imshow(wc, interpolation='bilinear')
+    ax.axis('off')
     return fig
 
 # --- [기능 1: 업종별 트렌드 분석] ---
 if main_menu == "업종별 트렌드 분석":
-    st.header("📈 네이버 데이터랩 기준 트렌드 분석")
+    st.header("📈 업종 이슈 마인드맵 리포트")
     c1, c2 = st.columns(2)
     with c1: m_cat = st.selectbox("대분류 선택", list(NAVER_CATEGORIES.keys()))
     with c2: s_cat = st.selectbox("중분류 선택", NAVER_CATEGORIES[m_cat])
-    
-    # 🌟 사라졌던 기간 선택 슬라이더 부활
+    # 🌟 기간 설정 슬라이더 유지
     period_label = st.select_slider("분석 기간 설정", options=["3일", "7일", "한달", "60일", "분기(90일)"], value="60일")
     
     if st.button(f"🚀 {s_cat} 마인드맵 분석 시작"):
-        with st.spinner(f"{s_cat} 최신 데이터 분석 중..."):
+        with st.spinner(f"{s_cat} 업종 트렌드 분석 중..."):
             rss = f"https://news.google.com/rss/search?q={s_cat}+트렌드+이슈&hl=ko&gl=KR&ceid=KR:ko"
-            res = requests.get(rss); titles = [re.split(r' - | \| ', i.title.get_text())[0] for i in BeautifulSoup(res.text, 'xml').find_all('item')[:15]]
-            if titles:
-                if ai_engine:
-                    try:
-                        resp = ai_engine.generate_content(f"전문 AE로서 {s_cat} 업계 최신 트렌드 {titles}를 기반으로 {period_label} 동안의 마케팅 전략을 제안해줘.")
-                        st.markdown(f'<div class="ai-report-card"><b>🤖 {s_cat} ({period_label}) 트렌드 리포트</b><br><br>{resp.text}</div>', unsafe_allow_html=True)
-                    except: st.error("AI 연동에 일시적인 지연이 발생했습니다. 잠시 후 다시 시도해 주세요.")
+            try:
+                res = requests.get(rss, timeout=10)
+                titles = [re.split(r' - | \| ', i.title.get_text())[0] for i in BeautifulSoup(res.text, 'xml').find_all('item')[:20]]
                 
-                fig = create_mindmap(" ".join(titles), FONT_PATH)
-                st.pyplot(fig)
-                # 🌟 이미지 저장 기능 부활
-                buf = BytesIO(); fig.savefig(buf, format="png")
-                st.download_button("📥 분석 결과 저장 (PNG)", buf.getvalue(), f"{s_cat}_트렌드.png", "image/png")
+                if titles:
+                    if ai_engine:
+                        try:
+                            # 🌟 AI 분석 로직
+                            resp = ai_engine.generate_content(f"당신은 전문 AE입니다. {s_cat} 업종의 최근 트렌드 {titles}를 기반으로 {period_label} 기간의 핵심 인사이트와 제안 전략을 작성하세요.")
+                            st.markdown(f'<div class="ai-report-card"><b>🤖 {s_cat} ({period_label}) 트렌드 요약</b><br><br>{resp.text}</div>', unsafe_allow_html=True)
+                        except: st.warning("AI 분석 지연 중입니다. 마인드맵을 먼저 확인하세요.")
+                    
+                    # 🌟 진짜 마인드맵 구조 시각화
+                    fig = create_mindmap(" ".join(titles), FONT_PATH)
+                    st.pyplot(fig)
+                    buf = BytesIO(); fig.savefig(buf, format="png")
+                    st.download_button("📥 마인드맵 이미지 저장", buf.getvalue(), f"{s_cat}_분석.png", "image/png")
+            except: st.error("뉴스 수집 에러")
 
-# --- [기능 2: 가망 광고주 분석] ---
+# --- [기능 2: 가망 광고주 제안 솔루션 (복구 완료)] ---
 elif main_menu == "가망 광고주 제안 솔루션":
-    st.header("🎯 URL 기반 가망 광고주 맞춤 제안")
+    st.header("🎯 URL 기반 가망 광고주 제안")
     t_url = st.text_input("가망 광고주 URL 입력", placeholder="https://...")
     cc1, cc2 = st.columns(2)
     with cc1: pm_cat = st.selectbox("대분류 선택", list(NAVER_CATEGORIES.keys()), key="p_m")
     with cc2: ps_cat = st.selectbox("중분류 선택", NAVER_CATEGORIES[pm_cat], key="p_s")
     
     if st.button("💡 제안서 초안 생성"):
-        if not t_url: st.warning("URL을 입력해 주세요.")
+        if not t_url: st.warning("URL을 입력하세요.")
         else:
-            with st.spinner("브랜드 현황 및 시장 데이터 매칭 중..."):
+            with st.spinner("브랜드 분석 및 전략 매칭 중... (최대 10초 소요)"):
+                # 브랜드명 정제 및 AI 분석
                 brand = re.sub(r'https?://|www\.|brand\.naver\.com/|\.com|\.co\.kr|/', '', t_url)
                 if ai_engine:
                     try:
-                        resp = ai_engine.generate_content(f"광고주 {brand}, 업종 {ps_cat}. AE 관점에서 1.현황분석 2.트렌드전략 3.추천매체를 상세히 제안해줘.")
-                        st.markdown(f'<div class="ai-report-card"><b>💡 {brand} 맞춤 제안 솔루션</b><br><br>{resp.text}</div>', unsafe_allow_html=True)
-                    except: st.error("AI 분석 중 오류가 발생했습니다.")
+                        # 🌟 성공률을 높이기 위한 핵심 프롬프트
+                        prompt = f"광고주 {brand}, 업종 {ps_cat}. AE 관점에서 1.브랜드 진단 2.업종 트렌드 기반 제안 3.추천 매체 믹스를 제안해줘."
+                        resp = ai_engine.generate_content(prompt)
+                        if resp.text:
+                            st.markdown(f'<div class="ai-report-card"><b>💡 {brand} 맞춤 제안 솔루션</b><br><br>{resp.text}</div>', unsafe_allow_html=True)
+                        else: st.error("분석 결과가 비어있습니다. 다시 시도해 주세요.")
+                    except:
+                        st.error("AI 서버 응답 지연 오류가 발생했습니다. 다시 눌러주세요.")
 
-# --- [기능 3: DB 관리] ---
+# --- [기능 3: DB 관리 (유지)] ---
 elif main_menu == "광고주 DB 관리":
     st.header("📂 데이터 통합 관리 및 검색")
     with st.expander("💾 백업 데이터 복구 (XLSX)"):
@@ -133,28 +151,26 @@ elif main_menu == "광고주 DB 관리":
             rename_map = {'업체명': '광고주명', '광고주': '광고주명', '내용': '소통내용'}
             df.columns = [rename_map.get(c, c) for c in df.columns]
             st.session_state.history_db = df[['날짜', '광고주명', '소통내용', '핵심키워드']]
-            st.success("✅ 로드 완료!")
+            st.success("✅ 데이터 복구 완료!")
     st.divider()
     query = st.text_input("🔍 광고주 실시간 검색 (업체명 입력)")
     d_df = st.session_state.history_db.copy()
     if query: d_df = d_df[d_df['광고주명'].str.contains(query, na=False, case=False)]
     st.dataframe(d_df, use_container_width=True)
 
-# --- [기능 4: 소통 키워드 분석] ---
+# --- [기능 4: 소통 키워드 분석 (유지)] ---
 elif main_menu == "소통 키워드 분석":
     st.header("📊 광고주 소통 마인드맵")
     if st.session_state.history_db.empty:
-        st.info("데이터를 먼저 로드해 주세요.")
+        st.info("관리 메뉴에서 데이터를 먼저 업로드해 주세요.")
     else:
         clients = sorted(st.session_state.history_db['광고주명'].dropna().unique().tolist())
         target = st.selectbox("분석할 광고주 검색/선택", clients)
         period = st.select_slider("분석 범위(일)", options=[7, 30, 90, 180, 365], value=90)
-        
         f_df = st.session_state.history_db[st.session_state.history_db['광고주명'] == target]
         if not f_df.empty:
             text = " ".join(f_df['소통내용'].fillna('').astype(str))
-            if len(text.strip()) > 5:
-                fig = create_mindmap(text, FONT_PATH)
-                st.pyplot(fig)
-                buf = BytesIO(); fig.savefig(buf, format="png")
-                st.download_button("📥 마인드맵 이미지 저장", buf.getvalue(), f"{target}_소통분석.png", "image/png")
+            fig = create_mindmap(text, FONT_PATH)
+            st.pyplot(fig)
+            buf = BytesIO(); fig.savefig(buf, format="png")
+            st.download_button("📥 이미지 저장", buf.getvalue(), f"{target}_분석.png", "image/png")
